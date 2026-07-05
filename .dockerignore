@@ -1,0 +1,8 @@
+.git
+logs/
+run_logs/
+**/__pycache__/
+*.pyc
+build/
+install/
+log/

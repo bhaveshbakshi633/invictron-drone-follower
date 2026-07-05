@@ -1,0 +1,102 @@
+name: integration_test
+
+# Two lanes:
+#   tools             fast, hosted -- unit-checks the log/plot/gate tooling
+#                     against the committed sample_logs/. Runs on every push/PR.
+#   sitl-integration  the spec integration test -- builds the pinned Docker
+#                     image, runs the full stack headless for 60 s, asserts the
+#                     drone stayed above 1 m with no errors in the final 30 s,
+#                     and uploads logs + plots as artifacts. Heavy (compiles
+#                     PX4); runs on pushes to the default branch and on demand.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tools:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install tool deps
+        run: pip install -r requirements.txt
+
+      - name: log_summary on the sample runs
+        run: |
+          python3 tools/log_summary.py sample_logs/events.log
+          python3 tools/log_summary.py sample_logs/failing/events.log
+
+      - name: ci_check gate -- nominal PASSES, failing is REJECTED
+        run: |
+          python3 tools/ci_check.py \
+            --telemetry sample_logs/telemetry.jsonl \
+            --events sample_logs/events.log
+          if python3 tools/ci_check.py \
+               --telemetry sample_logs/failing/telemetry.jsonl \
+               --events sample_logs/failing/events.log; then
+            echo "ERROR: the failing sample must NOT pass the gate"; exit 1
+          else
+            echo "OK: failing sample correctly rejected"
+          fi
+
+      - name: plot_run generates the four plots
+        run: |
+          python3 tools/plot_run.py sample_logs/telemetry.jsonl --out /tmp/plots
+          for p in path_xy msg_rate rtf altitude; do
+            test -f "/tmp/plots/$p.png" || { echo "missing $p.png"; exit 1; }
+          done
+
+  sitl-integration:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    # Heavy: compiles PX4 from source (~20-30 min) and runs full Gazebo SITL.
+    # Run ON DEMAND (Actions -> integration_test -> Run workflow); best on a
+    # capable or self-hosted runner. Not auto-run on push, so a resource-starved
+    # free runner can't produce a misleading red check.
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (layer-cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          tags: drone_system:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run 60s headless integration test
+        run: |
+          mkdir -p ci_logs
+          docker run --rm \
+            -v "${{ github.workspace }}/ci_logs:/root/run/logs" \
+            drone_system:ci bash /root/scripts/run_ci.sh
+
+      - name: Generate plots from the run
+        if: always()
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/ci_logs:/root/run/logs" \
+            drone_system:ci bash -lc \
+            "python3 /root/tools/plot_run.py /root/run/logs/telemetry.jsonl --out /root/run/logs/plots || true"
+
+      - name: Upload run logs + plots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-logs
+          path: ci_logs

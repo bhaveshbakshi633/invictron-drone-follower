@@ -1,0 +1,5 @@
+# Host-side tool dependencies (tools/plot_run.py). Only needed to run the tools
+# OUTSIDE the Docker image -- inside the image these are already installed
+# (see docker/Dockerfile). log_summary.py and ci_check.py are pure stdlib.
+matplotlib>=3.5
+numpy>=1.21

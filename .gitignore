@@ -1,0 +1,9 @@
+logs/
+run_logs/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+install/
+log/
+.vscode/

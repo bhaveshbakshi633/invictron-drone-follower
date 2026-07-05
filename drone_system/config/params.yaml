@@ -1,0 +1,43 @@
+# ============================================================================
+# Central configuration for the drone-follows-car stack.
+# EVERY threshold the reviewer cares about lives here. Nothing is hardcoded in
+# the nodes -- each node declares these parameters and reads them at startup.
+# Edit values here, relaunch, behaviour changes. No rebuild required.
+# ============================================================================
+
+# Applied to every node (shared logging location).
+/**:
+  ros__parameters:
+    log_dir: "logs"          # relative to CWD where you launch, or absolute
+
+car_sim:
+  ros__parameters:
+    path_type: "figure8"     # figure8 | circle
+    path_scale_m: 20.0       # size of the loop
+    speed_mps: 2.5           # how fast the car drives its loop
+    publish_rate_hz: 30.0    # rate of /car/position
+    noise_stddev_m: 0.0      # >0 injects Gaussian sensor noise (see ANALYSIS Q1)
+    frame_id: "map"
+
+follower:
+  ros__parameters:
+    offset_distance_m: 5.0   # how far behind the car the drone trails
+    follow_altitude_m: 20.0  # cruise altitude while following
+    car_timeout_ms: 200      # gap on /car/position beyond which we hover
+    jump_threshold_m: 5.0    # single-step jump beyond which sample is rejected
+    update_rate_hz: 50.0     # rate of /drone/waypoint
+    frame_id: "map"
+
+px4_interface:
+  ros__parameters:
+    takeoff_altitude_m: 20.0
+    arm_max_retries: 3       # arm attempts before clean shutdown
+    arm_retry_delay_s: 2.0
+    offboard_rate_hz: 20.0   # PX4 needs >2 Hz setpoints to stay in OFFBOARD
+    min_altitude_check_m: 1.0
+
+health_monitor:
+  ros__parameters:
+    rtf_min: 0.8             # warn if real-time factor drops below this
+    rtf_warn_period_s: 5.0   # how often to repeat the warning while degraded
+    rtf_sample_period_s: 1.0
