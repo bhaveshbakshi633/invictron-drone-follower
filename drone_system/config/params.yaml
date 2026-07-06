@@ -25,7 +25,7 @@ follower:
     follow_altitude_m: 20.0  # cruise altitude while following
     car_timeout_ms: 200      # gap on /car/position beyond which we hover
     jump_threshold_m: 5.0    # single-step jump beyond which sample is rejected
-    lead_time_s: 1.5         # velocity feed-forward horizon; compensates drone tracking lag (0 = pure geometric follow)
+    lead_time_s: 0.0         # optional extra follower look-ahead; the tracking-lag ROOT fix is px4_interface's setpoint velocity feed-forward (>0 = more lead)
     update_rate_hz: 50.0     # rate of /drone/waypoint
     frame_id: "map"
 

@@ -33,7 +33,7 @@ class Follower(Node):
         self.declare_parameter("follow_altitude_m", 20.0)
         self.declare_parameter("car_timeout_ms", 200)
         self.declare_parameter("jump_threshold_m", 5.0)
-        self.declare_parameter("lead_time_s", 1.5)
+        self.declare_parameter("lead_time_s", 0.0)
         self.declare_parameter("update_rate_hz", 50.0)
         self.declare_parameter("frame_id", "map")
         self.declare_parameter("log_dir", "logs")

@@ -99,6 +99,9 @@ class Px4Interface(Node):
         self.cur_ned = None                 # (n, e, d) current position
         self.target_ned = (0.0, 0.0, -self.takeoff_alt)   # climb straight up
         self.target_yaw = 0.0
+        self.target_vel = (0.0, 0.0, 0.0)   # setpoint velocity feed-forward (NED)
+        self._prev_target = None            # finite-diff state for the waypoint stream
+        self._prev_target_t = None
         self.setpoint_count = 0
         self.arm_attempts = 0
         self._last_arm_action = None        # sim-time of last arm/mode command
@@ -123,6 +126,18 @@ class Px4Interface(Node):
         n, e, d = enu_to_ned(
             msg.pose.position.x, msg.pose.position.y, msg.pose.position.z)
         if self.state == self.FOLLOW:
+            # Finite-difference the moving waypoint to get its velocity, sent as
+            # feed-forward in the setpoint (see _send_setpoint).
+            t = self._now_s()
+            if self._prev_target is not None:
+                dt = t - self._prev_target_t
+                if dt > 1e-3:
+                    a = 0.3   # low-pass so a noisy waypoint doesn't inject jerk
+                    self.target_vel = tuple(
+                        (1 - a) * pv + a * (c - p) / dt
+                        for pv, c, p in zip(self.target_vel, (n, e, d), self._prev_target))
+            self._prev_target = (n, e, d)
+            self._prev_target_t = t
             self.target_ned = (n, e, d)
 
     # -- helpers --------------------------------------------------------------
@@ -145,7 +160,13 @@ class Px4Interface(Node):
         sp.position = [float(self.target_ned[0]),
                        float(self.target_ned[1]),
                        float(self.target_ned[2])]
-        sp.velocity = [nan, nan, nan]        # NaN -> pure position control
+        # Velocity FEED-FORWARD (root fix for the tracking lag): the setpoint's
+        # own velocity, finite-diffed from the moving waypoint stream, so PX4's
+        # position controller LEADS the moving target instead of trailing it --
+        # fixing the lag at the source (position-only setpoints) rather than
+        # compensating it upstream. Zero during the straight-up climb.
+        sp.velocity = [float(self.target_vel[0]), float(self.target_vel[1]),
+                       float(self.target_vel[2])]
         sp.acceleration = [nan, nan, nan]
         sp.jerk = [nan, nan, nan]
         sp.yaw = float(self.target_yaw)
