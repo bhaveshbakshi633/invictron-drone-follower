@@ -7,13 +7,23 @@
 # (no rebuild needed after editing a node/launch/param).
 set -e
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-IMAGE="${IMAGE:-drone_system:latest}"
+# Same pre-built image as run.sh; pull it if absent, fall back to a local build.
+IMAGE="${IMAGE:-ghcr.io/bhaveshbakshi633/drone_system:latest}"
 HEADLESS="${HEADLESS:-0}"
 
 # If the docker group isn't active in this shell yet, re-exec through it.
 if ! docker info >/dev/null 2>&1 && [ -z "${_SG_WRAP:-}" ]; then
     export _SG_WRAP=1
     exec sg docker -c "bash '$REPO/scripts/run_local.sh' $*"
+fi
+
+# Get the image if it isn't local yet (mirrors run.sh): pull the pre-built one,
+# else fall back to a local source build.
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    docker pull "$IMAGE" 2>/dev/null || {
+        IMAGE=drone_system:latest
+        docker image inspect "$IMAGE" >/dev/null 2>&1 || "$REPO/scripts/build_image.sh"
+    }
 fi
 
 mkdir -p "$REPO/run_logs"

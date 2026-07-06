@@ -29,7 +29,8 @@ from launch.actions import (
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
-from launch.substitutions import LaunchConfiguration, EnvironmentVariable
+from launch.substitutions import (
+    LaunchConfiguration, EnvironmentVariable, PythonExpression)
 from launch_ros.actions import Node
 
 
@@ -54,8 +55,9 @@ def generate_launch_description():
         cmd=["MicroXRCEAgent", "udp4", "-p", "8888", "-v", "2"],  # -v 2: below default (4), keeps agent logs quiet
         output="screen", name="uxrce_agent")
 
-    # 2) PX4 SITL + Gazebo. `make px4_sitl gz_x500` is a no-op rebuild-check on a
-    #    built tree, then boots the sim. HEADLESS controls the GUI.
+    # 2) PX4 SITL + Gazebo. `make px4_sitl gz_x500` boots the gz SERVER only (it
+    #    runs `gz sim -s`); it does NOT open a GUI window regardless of HEADLESS.
+    #    The GUI client is attached separately below when headless:=0.
     px4 = ExecuteProcess(
         cmd=["bash", "-c",
              'cd "$PX4_DIR" && HEADLESS="$HEADLESS" make px4_sitl gz_x500 < /dev/null'],
@@ -78,6 +80,16 @@ def generate_launch_description():
              output="screen",
              parameters=[{"world": LaunchConfiguration("car_viz_world")}],
              condition=IfCondition(LaunchConfiguration("car_viz"))),
+        # GUI client (headless:=0 only): PX4 runs the gz server-only, so nothing
+        # opens a window -- attach the GUI here. Wait for the server's world to
+        # exist, then run `gz sim -g`. Kept in THIS TimerAction so it actually
+        # fires (a separate later action silently never does).
+        ExecuteProcess(
+            cmd=["bash", "-c",
+                 'for i in $(seq 90); do gz service -l 2>/dev/null | '
+                 'grep -q "/world/.*/create" && break; sleep 1; done; exec gz sim -g'],
+            output="screen", name="gz_gui",
+            condition=IfCondition(PythonExpression(["'", headless, "' == '0'"]))),
     ])
 
     # If px4_interface dies (unrecoverable arm failure), stop the whole launch.

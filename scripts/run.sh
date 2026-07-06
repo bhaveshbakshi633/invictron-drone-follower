@@ -11,7 +11,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # Prefer the pre-built image from GHCR (no PX4 compile). Override with IMAGE=<tag>,
 # or set IMAGE=drone_system:latest to force a local source build.
 PREBUILT="ghcr.io/bhaveshbakshi633/drone_system:latest"
-IMAGE="${IMAGE:-$PREBUILT}"
+export IMAGE="${IMAGE:-$PREBUILT}"   # exported so run_local.sh (GUI path) reuses it
 
 if ! docker info >/dev/null 2>&1; then
     echo "[run] cannot talk to Docker. Install Docker Engine and either add your" >&2
