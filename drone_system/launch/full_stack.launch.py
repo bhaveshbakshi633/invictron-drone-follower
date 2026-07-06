@@ -70,16 +70,15 @@ def generate_launch_description():
         px4_iface,
         node("health_monitor", "health_monitor"),
         node("telemetry_logger", "telemetry_logger"),
-    ])
-
-    # OPTIONAL: a visible car box in the Gazebo GUI (demo only, car_viz:=1). Off by
-    # default so CI/headless is untouched. Starts after gz is up; pure visualization
-    # (spawns + tracks /car/position) -- the follower never reads it.
-    car_viz = TimerAction(period=12.0, actions=[
+        # OPTIONAL visible car box (car_viz:=1, default off -> CI/headless untouched).
+        # MUST live in THIS TimerAction -- a separate action later in the
+        # LaunchDescription silently never fires. car_viz retries the spawn until gz
+        # is up; pure visualization, the follower never reads it.
         Node(package="drone_system", executable="car_viz", name="car_viz",
              output="screen",
              parameters=[{"world": LaunchConfiguration("car_viz_world")}],
-             condition=IfCondition(LaunchConfiguration("car_viz")))])
+             condition=IfCondition(LaunchConfiguration("car_viz"))),
+    ])
 
     # If px4_interface dies (unrecoverable arm failure), stop the whole launch.
     shutdown_on_iface_exit = RegisterEventHandler(
@@ -98,6 +97,5 @@ def generate_launch_description():
         agent,
         TimerAction(period=2.0, actions=[px4]),
         our_nodes,
-        car_viz,
         shutdown_on_iface_exit,
     ])

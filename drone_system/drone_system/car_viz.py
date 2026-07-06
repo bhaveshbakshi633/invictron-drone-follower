@@ -18,6 +18,7 @@ import subprocess
 import tempfile
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
 
@@ -72,8 +73,8 @@ class CarViz(Node):
             return
         x, y, z = self.pos
         if not self.spawned:
-            self._spawn(x, y, z)
-            self.spawned = True
+            # retry until gz is up and the spawn actually succeeds
+            self.spawned = self._spawn(x, y, z)
             return
         self._set_pose(x, y, z)
 
@@ -83,13 +84,20 @@ class CarViz(Node):
         cmd = [self.gz, "service", "-s", f"/world/{self.world}/create",
                "--reqtype", "gz.msgs.EntityFactory", "--reptype", "gz.msgs.Boolean",
                "--timeout", "3000", "--req", req]
-        self.get_logger().info("SPAWN CMD: " + " ".join(repr(c) for c in cmd))
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=6)
-            self.get_logger().info(
-                f"SPAWN rc={r.returncode} stdout={r.stdout.strip()!r} stderr={r.stderr.strip()!r}")
+            ok = (r.returncode == 0 and "true" in r.stdout.lower())
+            if ok:
+                self.get_logger().info(f"car box spawned in world '{self.world}'")
+            else:
+                self.get_logger().warn(
+                    f"spawn not ready (gz booting?) rc={r.returncode} out={r.stdout.strip()!r}",
+                    throttle_duration_sec=5.0)
+            return ok
         except Exception as e:
-            self.get_logger().error(f"SPAWN failed: {e}")
+            self.get_logger().warn(f"spawn retry (gz not ready?): {e}",
+                                   throttle_duration_sec=5.0)
+            return False
 
     def _set_pose(self, x, y, z):
         req = (f'name: "{self.name}" position: {{x: {x:.3f} y: {y:.3f} z: {z:.3f}}} '
@@ -108,7 +116,7 @@ def main(args=None):
     node = CarViz()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
