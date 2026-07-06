@@ -82,7 +82,7 @@ class TelemetryLogger(Node):
             "drone_y": self.drone[1] if self.drone else None,
             "drone_z": self.drone[2] if self.drone else None,
             "rtf": self.rtf,
-            "msg_dt_ms": round(self.msg_dt_ms, 2) if self.msg_dt_ms else None,
+            "msg_dt_ms": round(self.msg_dt_ms, 2) if self.msg_dt_ms is not None else None,
         }
         self.tw.write(**row)
 

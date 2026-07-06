@@ -36,7 +36,6 @@ from .logutil import get_event_logger
 # PX4 enum values (kept explicit so we don't depend on constant names that have
 # drifted across px4_msgs releases).
 ARMING_STATE_ARMED = 2       # VehicleStatus.ARMING_STATE_ARMED
-NAV_STATE_OFFBOARD = 14      # VehicleStatus.NAVIGATION_STATE_OFFBOARD
 CMD_ARM_DISARM = 400         # VEHICLE_CMD_COMPONENT_ARM_DISARM
 CMD_DO_SET_MODE = 176        # VEHICLE_CMD_DO_SET_MODE
 
@@ -64,6 +63,7 @@ class Px4Interface(Node):
         self.max_retries = int(self.get_parameter("arm_max_retries").value)
         self.retry_delay = float(self.get_parameter("arm_retry_delay_s").value)
         self.force_arm_fail_n = int(self.get_parameter("force_arm_fail_n").value)
+        self.min_alt_check = float(self.get_parameter("min_altitude_check_m").value)
         rate = float(self.get_parameter("offboard_rate_hz").value)
         self.rate = rate
         self._warmup_limit = int(rate * 60)  # give PX4 ~60 s to become arm-ready
@@ -96,7 +96,6 @@ class Px4Interface(Node):
         # State
         self.state = self.INIT
         self.arming_state = 0
-        self.nav_state = 0
         self.preflight_ok = False
         self.cur_ned = None                 # (n, e, d) current position
         self.target_ned = (0.0, 0.0, -self.takeoff_alt)   # climb straight up
@@ -107,6 +106,7 @@ class Px4Interface(Node):
         self.setpoint_count = 0
         self.arm_attempts = 0
         self._last_arm_action = None        # sim-time of last arm/mode command
+        self._last_low_alt_warn = 0.0       # throttle for the low-altitude warning
 
         self.dt = 1.0 / rate
         self.create_timer(self.dt, self._loop)
@@ -117,7 +117,6 @@ class Px4Interface(Node):
     # -- subscriptions --------------------------------------------------------
     def _on_status(self, msg: VehicleStatus):
         self.arming_state = msg.arming_state
-        self.nav_state = msg.nav_state
         self.preflight_ok = bool(getattr(msg, "pre_flight_checks_pass", True))
 
     def _on_local_pos(self, msg: VehicleLocalPosition):
@@ -246,6 +245,16 @@ class Px4Interface(Node):
             return
 
         # self.state == FOLLOW: target_ned is driven by /drone/waypoint callback.
+        if self.state == self.FOLLOW:
+            # Low-altitude safety guard: warn if the drone sinks below the configured
+            # floor while following (an in-flight check, not just the offline CI gate).
+            alt = self._altitude()
+            now = self._now_s()
+            if alt < self.min_alt_check and (now - self._last_low_alt_warn) >= 5.0:
+                self._last_low_alt_warn = now
+                self.log.warning(
+                    f"low_altitude alt_m={alt:.2f} floor_m={self.min_alt_check} "
+                    f"action=warn")
 
     def _attempt_arm(self):
         self.arm_attempts += 1

@@ -124,10 +124,11 @@ def check_altitude_floor(rows, min_alt):
 def determine_run_end(rows, events):
     """Return (end_dt, source_str) — wall-clock end time of the run.
 
-    Prefer telemetry: use the row with max ``t`` and read its ``wall``. Fall
-    back to the max events timestamp.
+    Use the LATER of (a) the max-``t`` telemetry row's ``wall`` time and (b) the
+    max events timestamp. Taking the max matters: an ERROR logged AFTER the last
+    telemetry sample (e.g. at shutdown, once telemetry_logger has stopped writing)
+    would otherwise be past ``run_end`` and slip through the late-error gate.
     """
-    # Try telemetry: find max-t row that also has a parseable wall timestamp.
     best_t = None
     best_wall = None
     for row in rows:
@@ -138,15 +139,18 @@ def determine_run_end(rows, events):
         if best_t is None or t > best_t:
             best_t = t
             best_wall = wall
+    events_end = max((e[0] for e in events), default=None)
+
+    candidates = [w for w in (best_wall, events_end) if w is not None]
+    if not candidates:
+        return None, "none"
+    end = max(candidates)
+    src = []
     if best_wall is not None:
-        return best_wall, "telemetry max t={:.2f}".format(best_t)
-
-    # Fall back to events.
-    if events:
-        end = max(e[0] for e in events)
-        return end, "events max timestamp"
-
-    return None, "none"
+        src.append("telemetry t={:.2f}".format(best_t))
+    if events_end is not None:
+        src.append("events")
+    return end, "max(" + ", ".join(src) + ")"
 
 
 def check_late_errors(events, run_end, window):
