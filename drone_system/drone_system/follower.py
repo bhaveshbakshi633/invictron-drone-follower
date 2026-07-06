@@ -36,6 +36,7 @@ class Follower(Node):
         self.declare_parameter("follow_altitude_m", 20.0)
         self.declare_parameter("car_timeout_ms", 200)
         self.declare_parameter("jump_threshold_m", 5.0)
+        self.declare_parameter("lead_time_s", 1.5)
         self.declare_parameter("update_rate_hz", 50.0)
         self.declare_parameter("frame_id", "map")
         self.declare_parameter("log_dir", "logs")
@@ -44,6 +45,7 @@ class Follower(Node):
         self.altitude = float(self.get_parameter("follow_altitude_m").value)
         self.timeout_ms = float(self.get_parameter("car_timeout_ms").value)
         self.jump_m = float(self.get_parameter("jump_threshold_m").value)
+        self.lead_time = float(self.get_parameter("lead_time_s").value)
         rate = float(self.get_parameter("update_rate_hz").value)
         self.frame_id = self.get_parameter("frame_id").value
         log_dir = self.get_parameter("log_dir").value
@@ -53,6 +55,7 @@ class Follower(Node):
         self.last_valid = None       # (x, y) last accepted car position
         self.last_recv = None        # rclpy Time of last ACCEPTED sample
         self.heading = None          # (hx, hy) smoothed unit travel direction
+        self.car_vel = None          # (vx, vy) smoothed car velocity m/s (feed-forward)
         self.waypoint = None         # (x, y, z) last commanded setpoint
         self.hovering = False
 
@@ -90,8 +93,17 @@ class Follower(Node):
                     f"action=discard_hold_last_valid")
                 return
 
-            # Update smoothed heading from this valid step.
+            # Update smoothed heading AND car velocity from this valid step.
             vx, vy = x - self.last_valid[0], y - self.last_valid[1]
+            dt = (now - self.last_recv).nanoseconds / 1e9
+            if dt > 1e-3:
+                cvx, cvy = vx / dt, vy / dt          # car velocity, m/s
+                if self.car_vel is None:
+                    self.car_vel = (cvx, cvy)
+                else:
+                    b = 0.3
+                    self.car_vel = ((1 - b) * self.car_vel[0] + b * cvx,
+                                    (1 - b) * self.car_vel[1] + b * cvy)
             n = math.hypot(vx, vy)
             if n > 1e-3:
                 hx, hy = vx / n, vy / n
@@ -107,6 +119,7 @@ class Follower(Node):
             # Fresh lock after the gap; the old heading is stale, so drop it and
             # rebuild from the next continuous step.
             self.heading = None
+            self.car_vel = None
             self.log.info("car_reacquired after gap action=reset_hold")
 
         self.last_valid = (x, y)
@@ -132,8 +145,15 @@ class Follower(Node):
             return
 
         hx, hy = self.heading if self.heading is not None else (1.0, 0.0)
-        tx = self.last_valid[0] - self.offset * hx
-        ty = self.last_valid[1] - self.offset * hy
+        cvx, cvy = self.car_vel if self.car_vel is not None else (0.0, 0.0)
+        # Velocity feed-forward: aim where the car WILL be in lead_time_s, so the
+        # drone's own position-tracking lag lands it near the intended offset
+        # instead of trailing ~2x it. lead_time_s=0 recovers the pure geometric
+        # follow. Tune lead_time_s (~ the drone's tracking delay) in params.yaml.
+        px = self.last_valid[0] + cvx * self.lead_time
+        py = self.last_valid[1] + cvy * self.lead_time
+        tx = px - self.offset * hx
+        ty = py - self.offset * hy
         self.waypoint = (tx, ty, self.altitude)
         self._publish(self.waypoint)
 

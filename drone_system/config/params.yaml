@@ -25,6 +25,7 @@ follower:
     follow_altitude_m: 20.0  # cruise altitude while following
     car_timeout_ms: 200      # gap on /car/position beyond which we hover
     jump_threshold_m: 5.0    # single-step jump beyond which sample is rejected
+    lead_time_s: 1.5         # velocity feed-forward horizon; compensates drone tracking lag (0 = pure geometric follow)
     update_rate_hz: 50.0     # rate of /drone/waypoint
     frame_id: "map"
 
