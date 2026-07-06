@@ -46,16 +46,18 @@ cd invictron-drone-follower
 ./scripts/run.sh
 ```
 
-That is the portable "proof it runs". Under the hood it is two steps you can
-also run by hand:
+That is the portable "proof it runs". Under the hood it just gets the image and
+runs the gate — the two steps you can also run by hand:
 
 ```bash
-# 1) Build the pinned image (first build compiles PX4 — ~20–30 min, once).
-./scripts/build_image.sh
+# 1) Get the image — pull the pre-built one (no compile)…
+docker pull ghcr.io/bhaveshbakshi633/drone_system:latest
+#    …or build it from source instead (compiles PX4, ~20–30 min, once):
+#    ./scripts/build_image.sh
 
 # 2) Run the exact 60-second headless integration test + pass/fail gate.
-docker run --rm -v "$(pwd)/run_logs:/root/run/logs" drone_system:latest \
-    bash /root/scripts/run_ci.sh
+docker run --rm -v "$(pwd)/run_logs:/root/run/logs" \
+    ghcr.io/bhaveshbakshi633/drone_system:latest bash /root/scripts/run_ci.sh
 ```
 
 ### Optional: watch it fly (Gazebo GUI)
