@@ -69,8 +69,12 @@ Inside the built image — or on a native ROS2 Humble + PX4 v1.15 + `px4_msgs`
 host (see [Native setup](#native-setup)) — the single launch command is:
 
 ```bash
-ros2 launch drone_system full_stack.launch.py
+ros2 launch drone_system full_stack.launch.py                          # headless
+ros2 launch drone_system full_stack.launch.py headless:=0 car_viz:=1   # GUI + visible car box
 ```
+
+`car_viz:=1` spawns a visible box in the Gazebo GUI that tracks the car's
+`/car/position` (pure visualization — the follower still reads only the topic).
 
 ---
 
@@ -185,7 +189,8 @@ threshold — are in `drone_system/config/params.yaml`. Override the whole file:
 ros2 launch drone_system full_stack.launch.py params:=/path/to/my_params.yaml
 ```
 
-Launch arguments: `headless:=1|0`, `px4_dir:=<path>`, `params:=<path>`.
+Launch arguments: `headless:=1|0`, `car_viz:=1` (visible car box in the GUI),
+`params:=<path>`, `px4_dir:=<path>`.
 
 ---
 
