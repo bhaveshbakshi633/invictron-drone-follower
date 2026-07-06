@@ -26,6 +26,13 @@ LAUNCH_PID=$!
 sleep "$((RUN_SECONDS + 5))"   # +5s startup slack (agent + PX4 boot)
 
 echo "[run_ci] stopping ..."
+# Stop telemetry FIRST, before tearing down the flight. The gate fails on ANY
+# airborne sample < 1 m; during teardown PX4 loses its OFFBOARD setpoint stream and
+# may descend. Ending telemetry before the flight is torn down means a genuinely
+# good run is never failed by the shutdown descent. telemetry.jsonl is line-buffered,
+# so no completed row is lost when the writer is stopped abruptly.
+pkill -f telemetry_logger 2>/dev/null || true
+sleep 1
 kill -INT "$LAUNCH_PID" 2>/dev/null || true
 sleep 6
 kill -KILL "$LAUNCH_PID" 2>/dev/null || true

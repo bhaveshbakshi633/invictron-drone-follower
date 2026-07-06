@@ -10,7 +10,7 @@ travel, at `follow_altitude_m` metres altitude, emitted at a steady 50 Hz so the
 PX4 OFFBOARD interface downstream always has a fresh setpoint.
 
 Failure handling (every threshold comes from config/params.yaml):
-  * /car/position gap > car_timeout_ms      -> hover in place, WARNING w/ timestamp
+  * /car/position gap > car_timeout_ms      -> hover in place, ERROR w/ timestamp
   * single-step jump > jump_threshold_m     -> discard sample, hold last valid, WARN
 It never reads Gazebo ground-truth -- only the /car/position topic.
 """
@@ -84,9 +84,12 @@ class Follower(Node):
             # last_recv on a rejected sample, so a stream of garbage still trips
             # the hover timeout (which then re-acquires via the branch below).
             if exceeds_jump((x, y), self.last_valid, self.jump_m):
+                delta = distance((x, y), self.last_valid)
                 self.log.warning(
-                    f"jump_rejected delta_m={distance((x, y), self.last_valid):.2f} "
-                    f"threshold={self.jump_m} action=discard_hold_last_valid")
+                    f"Discarded an implausible car-position jump of {delta:.2f} m "
+                    f"in one step (limit {self.jump_m:.0f} m); holding last valid "
+                    f"position. jump_rejected delta_m={delta:.2f} "
+                    f"threshold_m={self.jump_m:.0f} action=discard_hold_last_valid")
                 return
 
             # Update smoothed heading AND car velocity from this valid step.
@@ -116,13 +119,15 @@ class Follower(Node):
             # rebuild from the next continuous step.
             self.heading = None
             self.car_vel = None
-            self.log.info("car_reacquired after gap action=reset_hold")
+            self.log.info("Re-acquired car position after a gap; resetting "
+                          "heading estimate. car_reacquired action=reset_hold")
 
         self.last_valid = (x, y)
         self.last_recv = now
         if self.hovering:
             self.hovering = False
-            self.log.info("car_stream_recovered action=resume_follow")
+            self.log.info("Car position stream recovered; resuming follow. "
+                          "car_stream_recovered action=resume_follow")
 
     # -- steady 50 Hz setpoint emission --------------------------------------
     def _on_timer(self):
@@ -133,9 +138,11 @@ class Follower(Node):
         if gap_ms > self.timeout_ms:
             if not self.hovering:
                 self.hovering = True
-                self.log.warning(
-                    f"car_gap_ms={gap_ms:.0f} threshold={self.timeout_ms} "
-                    f"action=hover")
+                self.log.error(
+                    f"Car position stopped arriving: no /car/position update for "
+                    f"{gap_ms:.0f} ms (limit {self.timeout_ms:.0f} ms); commanding "
+                    f"the drone to hover in place. car_gap_ms={gap_ms:.0f} "
+                    f"threshold_ms={self.timeout_ms:.0f} action=hover")
             if self.waypoint is not None:
                 self._publish(self.waypoint)  # hold position -> hover
             return

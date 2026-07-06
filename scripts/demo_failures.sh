@@ -44,13 +44,13 @@ case "${1:-}" in
     echo "[demo] Arming is a one-time startup event, so this is a RELAUNCH demo."
     echo "  px4_interface's 'force_arm_fail_n' param withholds the arm command for the"
     echo "  first N attempts, so PX4 never arms and the retry -> clean-shutdown fires."
-    echo "  Set it >= arm_max_retries (3) in config/params.yaml, then relaunch:"
+    echo "  Set it >= 4 (1 initial + arm_max_retries=3) in config/params.yaml, then relaunch:"
     echo ""
     echo "     # config/params.yaml -> px4_interface: force_arm_fail_n: 5"
     echo "     ros2 launch drone_system full_stack.launch.py"
     echo ""
-    echo "  Watch events.log for 3x 'arm_attempt=.. FAULT_INJECTED=withhold_arm' then:"
-    echo "        ERROR | px4_interface | arm failed after 3 attempts, shutting down cleanly"
+    echo "  Watch events.log for 4x 'arm_attempt=.. FAULT_INJECTED=withhold_arm' then:"
+    echo "        ERROR | px4_interface | PX4 failed to arm after 4 attempts (1 initial + 3 retries)..."
     ;;
   *)
     echo "usage: $0 {car_gap|jump|rtf|arm}"; exit 2 ;;

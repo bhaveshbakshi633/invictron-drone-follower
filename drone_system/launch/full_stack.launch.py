@@ -16,7 +16,9 @@ Launch arguments:
 Nodes run on the wall clock (use_sim_time:=false): PX4's uXRCE-DDS bridge
 publishes no /clock, so there is no ROS sim-time source; PX4 messages carry their
 own sim timestamps where we need them. If px4_interface exits (e.g. an
-unrecoverable arm failure), the whole launch is torn down cleanly.
+unrecoverable arm failure), its OnProcessExit handler emits a launch Shutdown that
+stops the ROS nodes; the packaged run (`docker run --rm` / run_ci.sh) reaps the
+PX4 SITL + Gazebo + agent processes on teardown.
 """
 
 import os

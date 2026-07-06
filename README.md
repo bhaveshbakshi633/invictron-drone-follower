@@ -20,9 +20,16 @@ ros2 launch drone_system full_stack.launch.py
 
 ## Prerequisites
 
-- **Docker Engine** on a Linux host. Either add your user to the `docker` group
-  (`sudo usermod -aG docker $USER && newgrp docker`) or run the scripts with
-  `sudo`.
+- **Docker Engine** on an **x86-64 Linux host**. Either add your user to the
+  `docker` group (`sudo usermod -aG docker $USER && newgrp docker`) or run the
+  scripts with `sudo`.
+  - *Portability note:* the image is `linux/amd64`. On Apple-Silicon macOS it runs
+    only under (slow) emulation and PX4 SITL may not keep real-time — use an x86-64
+    Linux host for the flight test. The headless gate and all `tools/` still work
+    anywhere Docker + Python run.
+  - The **GUI** ("watch it fly") path needs an **X11** display (a Linux desktop);
+    it will not work over a Wayland-only session or on macOS/Windows. The headless
+    path needs no display.
 - **First run pulls a pre-built image** from GHCR
   (`ghcr.io/bhaveshbakshi633/drone_system`) — no compile, just a ~6 GB download.
   If that pull is unavailable it falls back to **building from source** (compiles
@@ -122,8 +129,8 @@ Nothing is hardcoded — edit, relaunch, done.
 
 | Failure | Detection | Response |
 |---|---|---|
-| `/car/position` stops (> 200 ms gap) | `follower` timer vs last accepted stamp | Drone **hovers**; WARNING logged w/ ISO timestamp |
-| PX4 fails to arm | `px4_interface` checks `arming_state` | **Retry 3×**, then ERROR + **clean shutdown** (disarm, tear down launch) |
+| `/car/position` stops (> 200 ms gap) | `follower` timer vs last accepted stamp | Drone **hovers**; **ERROR** logged w/ ISO timestamp |
+| PX4 fails to arm | `px4_interface` checks `arming_state` | 1 initial + **retry 3×** (4 attempts), then ERROR + **clean shutdown** (disarm, exit; launch `Shutdown` stops the ROS nodes, PX4/gz reaped by the run wrapper) |
 | Position jumps > 5 m in one step | `follower` step-distance gate | **Discard** sample, hold last valid, WARNING logged |
 | Gazebo RTF < 0.8 | `health_monitor` compares PX4 lockstep sim-time vs a wall clock | WARNING **every 5 s** until it recovers |
 
@@ -135,7 +142,7 @@ on demand so you can watch the recovery happen against a live stack:
 scripts/demo_failures.sh car_gap   # kills /car/position   -> follower hovers + WARN
 scripts/demo_failures.sh jump      # injects a >5 m teleport -> discard + hold + WARN
 scripts/demo_failures.sh rtf       # pegs all CPUs -> RTF < 0.8 -> warning every 5 s
-scripts/demo_failures.sh arm       # (relaunch) force_arm_fail_n -> 3 arm retries -> clean shutdown
+scripts/demo_failures.sh arm       # (relaunch) force_arm_fail_n -> 4 arm attempts (1+3) -> clean shutdown
 # then: python3 tools/log_summary.py run_logs/events.log
 ```
 

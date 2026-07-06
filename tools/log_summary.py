@@ -107,9 +107,9 @@ def summarize(path):
             ts = parse_timestamp(ts_raw)
             if ts is not None:
                 error_timestamps.append((ts, ts_raw))
-            else:
-                # Timestamp unpar.seable but line otherwise valid -> note it.
-                skipped += 1
+            # If the timestamp is unparseable the line is still a valid ERROR (already
+            # counted); it just can't contribute to the first/last-error span. We do
+            # NOT count it as skipped/malformed -- that would double-count the line.
         elif level == "INFO":
             pass
         else:

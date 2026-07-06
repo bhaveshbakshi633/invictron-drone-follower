@@ -60,13 +60,13 @@ jobs:
   sitl-integration:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
-    # Heavy: compiles PX4 from source (~20-30 min) then flies SITL. Run ON DEMAND
-    # (Actions -> integration_test -> Run workflow) -- standard practice for a
-    # resource-heavy integration lane: keeping it off every push means the main
-    # branch is never red from a flaky or timed-out build on a free 2-core runner.
-    # The fast `tools` job stays green on every push, and the pre-built GHCR image
-    # (publish_image.yml) lets a reviewer run this exact 60 s test locally in seconds.
-    if: github.event_name == 'workflow_dispatch'
+    # The spec integration test: builds the image IN DOCKER, flies the full stack
+    # headless for 60 s, asserts the drone stayed above 1 m with no errors in the
+    # final 30 s, proves the arm-failure clean shutdown, and uploads logs + plots.
+    # Runs on push to the default branch (main/master) and on demand. The Docker
+    # build layer-caches the PX4 compile, so after the first run it finishes in a
+    # few minutes on a free 2-core runner. Not run on pull_request to save minutes.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,6 +90,10 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}/ci_logs:/root/run/logs" \
             drone_system:ci bash /root/scripts/run_ci.sh
+
+      - name: Prove clean shutdown on arm failure (retry then shut down cleanly)
+        run: |
+          docker run --rm drone_system:ci bash /root/scripts/test_arm_failure.sh
 
       - name: Generate plots from the run
         if: always()

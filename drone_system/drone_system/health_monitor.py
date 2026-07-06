@@ -104,8 +104,9 @@ class HealthMonitor(Node):
             if rtf < self.rtf_min:
                 if (now_wall - self._last_warn_wall) >= self.warn_period:
                     self.log.warning(
-                        f"rtf={rtf:.2f} below min={self.rtf_min} "
-                        f"sim_running_slow")
+                        f"Gazebo is running slow: real-time factor {rtf:.2f} is below "
+                        f"the {self.rtf_min} minimum; simulation is degraded. "
+                        f"rtf={rtf:.2f} min={self.rtf_min} sim_running_slow")
                     self._last_warn_wall = now_wall
 
     def destroy_node(self):

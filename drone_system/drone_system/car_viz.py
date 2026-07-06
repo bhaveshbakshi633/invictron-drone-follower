@@ -60,6 +60,7 @@ class CarViz(Node):
 
         self.pos = None
         self.spawned = False
+        self._inflight = []   # fire-and-forget set_pose procs, reaped each tick
         self.create_subscription(PoseStamped, "/car/position", self._on_car, 10)
         self.create_timer(1.0 / rate, self._tick)
         self.get_logger().info(
@@ -69,6 +70,8 @@ class CarViz(Node):
         self.pos = (msg.pose.position.x, msg.pose.position.y, self.sz / 2.0)
 
     def _tick(self):
+        # Reap finished set_pose subprocesses so they don't linger as zombies.
+        self._inflight = [p for p in self._inflight if p.poll() is None]
         if self.pos is None:
             return
         x, y, z = self.pos
@@ -106,7 +109,8 @@ class CarViz(Node):
                "--reqtype", "gz.msgs.Pose", "--reptype", "gz.msgs.Boolean",
                "--timeout", "200", "--req", req]
         try:
-            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._inflight.append(p)   # reaped in _tick via poll()
         except Exception as e:
             self.get_logger().warn(f"set_pose failed: {e}", throttle_duration_sec=5.0)
 

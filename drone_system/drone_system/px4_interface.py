@@ -9,14 +9,16 @@ All PX4-specific coupling (topics, NED frame, offboard handshake) lives HERE, so
 the follower stays a clean ENU waypoint producer.
 
 Failure handling:
-  * PX4 fails to arm  -> retry arm_max_retries times, then log ERROR and shut down
-                         the whole launch cleanly (disarm + rclpy shutdown).
+  * PX4 fails to arm  -> 1 initial attempt + arm_max_retries retries (default 3 ->
+                         4 total), then log ERROR and shut down the whole launch
+                         cleanly (disarm + rclpy shutdown).
 
 Frames: ROS is ENU (x=E, y=N, z=Up); PX4 is NED (x=N, y=E, z=Down).
     x_ned = y_enu,  y_ned = x_enu,  z_ned = -z_enu
 """
 
 import math
+import os
 
 import rclpy
 from rclpy.node import Node
@@ -57,13 +59,20 @@ class Px4Interface(Node):
         self.declare_parameter("force_arm_fail_n", 0)   # fault injection (demo): fail first N arm attempts
         self.declare_parameter("offboard_rate_hz", 20.0)
         self.declare_parameter("min_altitude_check_m", 1.0)
+        self.declare_parameter("takeoff_reach_tolerance_m", 0.5)
+        self.declare_parameter("low_alt_warn_period_s", 5.0)
         self.declare_parameter("log_dir", "logs")
 
         self.takeoff_alt = float(self.get_parameter("takeoff_altitude_m").value)
         self.max_retries = int(self.get_parameter("arm_max_retries").value)
+        # One initial arm attempt + max_retries retries. So arm_max_retries=3 means
+        # up to 4 total attempts before we give up and shut down cleanly.
+        self.max_attempts = 1 + self.max_retries
         self.retry_delay = float(self.get_parameter("arm_retry_delay_s").value)
         self.force_arm_fail_n = int(self.get_parameter("force_arm_fail_n").value)
         self.min_alt_check = float(self.get_parameter("min_altitude_check_m").value)
+        self.takeoff_tol = float(self.get_parameter("takeoff_reach_tolerance_m").value)
+        self.low_alt_warn_period = float(self.get_parameter("low_alt_warn_period_s").value)
         rate = float(self.get_parameter("offboard_rate_hz").value)
         self.rate = rate
         self._warmup_limit = int(rate * 60)  # give PX4 ~60 s to become arm-ready
@@ -107,6 +116,7 @@ class Px4Interface(Node):
         self.arm_attempts = 0
         self._last_arm_action = None        # sim-time of last arm/mode command
         self._last_low_alt_warn = 0.0       # throttle for the low-altitude warning
+        self._shutdown_deadline = None      # grace window: keep disarming, then exit
 
         self.dt = 1.0 / rate
         self.create_timer(self.dt, self._loop)
@@ -192,6 +202,14 @@ class Px4Interface(Node):
     # -- main 20 Hz loop ------------------------------------------------------
     def _loop(self):
         if self.state == self.SHUTDOWN:
+            # Keep disarming through the grace window so the disarm reaches PX4, then
+            # END THIS PROCESS deterministically. We do NOT rely on SystemExit
+            # propagating out of an rclpy timer callback (version-dependent and, in
+            # practice, swallowed) -- os._exit is guaranteed. The ERROR is already
+            # logged. The launch's OnProcessExit handler then tears down the rest.
+            self._send_cmd(CMD_ARM_DISARM, p1=0.0)
+            if self._shutdown_deadline is not None and self._now_s() >= self._shutdown_deadline:
+                os._exit(1)
             return
 
         # OFFBOARD requires a continuous setpoint stream at all times.
@@ -212,8 +230,9 @@ class Px4Interface(Node):
                 self.state = self.ARMING
             elif self.setpoint_count > self._warmup_limit:
                 self.log.error(
-                    "PX4 never became ready to arm (pre-arm checks never "
-                    "passed), shutting down cleanly")
+                    "PX4 never became ready to arm within the warm-up window "
+                    "(pre-arm checks never passed); shutting down cleanly. "
+                    "action=clean_shutdown")
                 self._clean_shutdown()
             elif self.setpoint_count % 40 == 0:
                 self.log.info(
@@ -229,17 +248,19 @@ class Px4Interface(Node):
                 return
             # Not armed yet -- retry after the delay elapses.
             if (self._now_s() - self._last_arm_action) >= self.retry_delay:
-                if self.arm_attempts >= self.max_retries:
+                if self.arm_attempts >= self.max_attempts:
                     self.log.error(
-                        f"arm failed after {self.arm_attempts} attempts, "
-                        f"shutting down cleanly")
+                        f"PX4 failed to arm after {self.arm_attempts} attempts "
+                        f"(1 initial + {self.max_retries} retries); shutting down "
+                        f"cleanly. arm_attempts={self.arm_attempts} "
+                        f"max_retries={self.max_retries} action=clean_shutdown")
                     self._clean_shutdown()
                     return
                 self._attempt_arm()
             return
 
         if self.state == self.TAKEOFF:
-            if self._altitude() >= (self.takeoff_alt - 0.5):
+            if self._altitude() >= (self.takeoff_alt - self.takeoff_tol):
                 self.log.info(f"takeoff_complete altitude_m={self._altitude():.1f}")
                 self.state = self.FOLLOW
             return
@@ -250,11 +271,13 @@ class Px4Interface(Node):
             # floor while following (an in-flight check, not just the offline CI gate).
             alt = self._altitude()
             now = self._now_s()
-            if alt < self.min_alt_check and (now - self._last_low_alt_warn) >= 5.0:
+            if (alt < self.min_alt_check
+                    and (now - self._last_low_alt_warn) >= self.low_alt_warn_period):
                 self._last_low_alt_warn = now
                 self.log.warning(
-                    f"low_altitude alt_m={alt:.2f} floor_m={self.min_alt_check} "
-                    f"action=warn")
+                    f"Drone altitude {alt:.2f} m dropped below the {self.min_alt_check} m "
+                    f"safety floor while following. low_altitude alt_m={alt:.2f} "
+                    f"floor_m={self.min_alt_check} action=warn")
 
     def _attempt_arm(self):
         self.arm_attempts += 1
@@ -264,20 +287,24 @@ class Px4Interface(Node):
         # path actually fires. Default 0 = off. See scripts/demo_failures.sh arm.
         if self.arm_attempts <= self.force_arm_fail_n:
             self.log.warning(
-                f"arm_attempt={self.arm_attempts}/{self.max_retries} "
+                f"arm_attempt={self.arm_attempts}/{self.max_attempts} "
                 f"FAULT_INJECTED=withhold_arm")
             return
         # Set mode OFFBOARD (base_mode=1, custom_main_mode=6) then arm.
         self._send_cmd(CMD_DO_SET_MODE, p1=1.0, p2=6.0)
         self._send_cmd(CMD_ARM_DISARM, p1=1.0)
-        self.log.info(f"arm_attempt={self.arm_attempts}/{self.max_retries}")
+        self.log.info(f"arm_attempt={self.arm_attempts}/{self.max_attempts}")
 
     def _clean_shutdown(self):
-        self.state = self.SHUTDOWN
+        # Enter SHUTDOWN and open a short grace window. _loop then keeps sending the
+        # disarm and hard-exits the process once the window elapses (see _loop). This
+        # is deterministic across rclpy versions, unlike raising SystemExit from a
+        # callback (which the executor can swallow, leaving the launch running).
+        if self.state != self.SHUTDOWN:
+            self.state = self.SHUTDOWN
+            self.log.info("clean_shutdown initiated action=disarm_then_exit")
+            self._shutdown_deadline = self._now_s() + 0.5
         self._send_cmd(CMD_ARM_DISARM, p1=0.0)  # best-effort disarm
-        self.log.info("clean_shutdown initiated")
-        # Tear down the process so the launch's on_exit can stop the rest.
-        raise SystemExit(1)
 
 
 def main(args=None):
