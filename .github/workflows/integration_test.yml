@@ -29,6 +29,9 @@ jobs:
       - name: Install tool deps
         run: pip install -r requirements.txt
 
+      - name: Unit tests -- follower policy (jump gate + feed-forward geometry)
+        run: python3 drone_system/test/test_follow_policy.py
+
       - name: log_summary on the sample runs
         run: |
           python3 tools/log_summary.py sample_logs/events.log

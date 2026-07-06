@@ -22,10 +22,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
 
 from .logutil import get_event_logger
-
-
-def _dist(a, b):
-    return math.hypot(a[0] - b[0], a[1] - b[1])
+from .follow_policy import distance, exceeds_jump, follow_waypoint
 
 
 class Follower(Node):
@@ -86,11 +83,10 @@ class Follower(Node):
             # is discarded and we hold last valid. We intentionally do NOT refresh
             # last_recv on a rejected sample, so a stream of garbage still trips
             # the hover timeout (which then re-acquires via the branch below).
-            d = _dist((x, y), self.last_valid)
-            if d > self.jump_m:
+            if exceeds_jump((x, y), self.last_valid, self.jump_m):
                 self.log.warning(
-                    f"jump_rejected delta_m={d:.2f} threshold={self.jump_m} "
-                    f"action=discard_hold_last_valid")
+                    f"jump_rejected delta_m={distance((x, y), self.last_valid):.2f} "
+                    f"threshold={self.jump_m} action=discard_hold_last_valid")
                 return
 
             # Update smoothed heading AND car velocity from this valid step.
@@ -144,17 +140,12 @@ class Follower(Node):
                 self._publish(self.waypoint)  # hold position -> hover
             return
 
-        hx, hy = self.heading if self.heading is not None else (1.0, 0.0)
-        cvx, cvy = self.car_vel if self.car_vel is not None else (0.0, 0.0)
-        # Velocity feed-forward: aim where the car WILL be in lead_time_s, so the
-        # drone's own position-tracking lag lands it near the intended offset
-        # instead of trailing ~2x it. lead_time_s=0 recovers the pure geometric
-        # follow. Tune lead_time_s (~ the drone's tracking delay) in params.yaml.
-        px = self.last_valid[0] + cvx * self.lead_time
-        py = self.last_valid[1] + cvy * self.lead_time
-        tx = px - self.offset * hx
-        ty = py - self.offset * hy
-        self.waypoint = (tx, ty, self.altitude)
+        heading = self.heading if self.heading is not None else (1.0, 0.0)
+        car_vel = self.car_vel if self.car_vel is not None else (0.0, 0.0)
+        # Velocity feed-forward -- see follow_policy.follow_waypoint (aim where the
+        # car WILL be in lead_time_s so the drone's tracking lag lands near offset).
+        self.waypoint = follow_waypoint(self.last_valid, car_vel, heading,
+                                        self.offset, self.lead_time, self.altitude)
         self._publish(self.waypoint)
 
     def _publish(self, wp):
