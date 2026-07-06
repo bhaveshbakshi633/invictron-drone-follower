@@ -64,6 +64,10 @@ class CarSim(Node):
     def _tick(self):
         self.theta += self.w * self.dt
         x, y = self._shape(self.theta)
+        # Heading = tangent to the path (direction of travel), from a tiny look-ahead
+        # along the SAME clean trajectory (computed before noise so it never jitters).
+        xa, ya = self._shape(self.theta + 1e-3)
+        yaw = math.atan2(ya - y, xa - x)
         if self.noise > 0.0:
             x += self._rng.gauss(0.0, self.noise)
             y += self._rng.gauss(0.0, self.noise)
@@ -74,7 +78,10 @@ class CarSim(Node):
         msg.pose.position.x = x
         msg.pose.position.y = y
         msg.pose.position.z = 0.0
-        msg.pose.orientation.w = 1.0
+        # yaw-only quaternion so the car faces where it is going (the GUI box uses this;
+        # the follower ignores orientation and reads only position).
+        msg.pose.orientation.z = math.sin(yaw / 2.0)
+        msg.pose.orientation.w = math.cos(yaw / 2.0)
         self.pub.publish(msg)
 
 

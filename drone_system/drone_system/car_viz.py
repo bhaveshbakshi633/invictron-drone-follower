@@ -59,6 +59,7 @@ class CarViz(Node):
             f.write(SDF.format(name=self.name, sx=self.sx, sy=self.sy, sz=self.sz))
 
         self.pos = None
+        self.orient = (0.0, 1.0)   # (qz, qw) yaw quaternion from /car/position
         self.spawned = False
         self._inflight = []   # fire-and-forget set_pose procs, reaped each tick
         self.create_subscription(PoseStamped, "/car/position", self._on_car, 10)
@@ -68,6 +69,7 @@ class CarViz(Node):
 
     def _on_car(self, msg):
         self.pos = (msg.pose.position.x, msg.pose.position.y, self.sz / 2.0)
+        self.orient = (msg.pose.orientation.z, msg.pose.orientation.w)
 
     def _tick(self):
         # Reap finished set_pose subprocesses so they don't linger as zombies.
@@ -103,8 +105,9 @@ class CarViz(Node):
             return False
 
     def _set_pose(self, x, y, z):
+        qz, qw = self.orient
         req = (f'name: "{self.name}" position: {{x: {x:.3f} y: {y:.3f} z: {z:.3f}}} '
-               f'orientation: {{w: 1.0}}')
+               f'orientation: {{z: {qz:.5f} w: {qw:.5f}}}')
         cmd = [self.gz, "service", "-s", f"/world/{self.world}/set_pose",
                "--reqtype", "gz.msgs.Pose", "--reptype", "gz.msgs.Boolean",
                "--timeout", "200", "--req", req]
