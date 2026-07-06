@@ -27,6 +27,7 @@ setup(
     entry_points={
         "console_scripts": [
             "car_sim = drone_system.car_sim:main",
+            "car_viz = drone_system.car_viz:main",
             "follower = drone_system.follower:main",
             "px4_interface = drone_system.px4_interface:main",
             "health_monitor = drone_system.health_monitor:main",
