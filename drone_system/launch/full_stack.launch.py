@@ -11,6 +11,7 @@ Launch arguments:
   headless:=1|0          run Gazebo without a GUI (default 1; set 0 for a demo)
   px4_dir:=<path>        PX4-Autopilot checkout (default $PX4_DIR or /opt/PX4-Autopilot)
   params:=<path>         override the parameter file
+  car_viz:=1             spawn a visible car box in the Gazebo GUI (demo; needs headless:=0)
 
 Nodes run on the wall clock (use_sim_time:=false): PX4's uXRCE-DDS bridge
 publishes no /clock, so there is no ROS sim-time source; PX4 messages carry their
@@ -25,6 +26,7 @@ from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument, ExecuteProcess, TimerAction, EmitEvent,
     RegisterEventHandler)
+from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
 from launch.substitutions import LaunchConfiguration, EnvironmentVariable
@@ -70,6 +72,15 @@ def generate_launch_description():
         node("telemetry_logger", "telemetry_logger"),
     ])
 
+    # OPTIONAL: a visible car box in the Gazebo GUI (demo only, car_viz:=1). Off by
+    # default so CI/headless is untouched. Starts after gz is up; pure visualization
+    # (spawns + tracks /car/position) -- the follower never reads it.
+    car_viz = TimerAction(period=12.0, actions=[
+        Node(package="drone_system", executable="car_viz", name="car_viz",
+             output="screen",
+             parameters=[{"world": LaunchConfiguration("car_viz_world")}],
+             condition=IfCondition(LaunchConfiguration("car_viz")))])
+
     # If px4_interface dies (unrecoverable arm failure), stop the whole launch.
     shutdown_on_iface_exit = RegisterEventHandler(
         OnProcessExit(target_action=px4_iface,
@@ -82,8 +93,11 @@ def generate_launch_description():
             default_value=EnvironmentVariable("PX4_DIR",
                                               default_value="/opt/PX4-Autopilot")),
         DeclareLaunchArgument("params", default_value=default_params),
+        DeclareLaunchArgument("car_viz", default_value="0"),
+        DeclareLaunchArgument("car_viz_world", default_value="default"),
         agent,
         TimerAction(period=2.0, actions=[px4]),
         our_nodes,
+        car_viz,
         shutdown_on_iface_exit,
     ])
