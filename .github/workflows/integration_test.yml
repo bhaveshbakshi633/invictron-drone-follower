@@ -57,11 +57,12 @@ jobs:
   sitl-integration:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
-    # Heavy: compiles PX4 from source (~20-30 min) and runs full Gazebo SITL.
-    # Run ON DEMAND (Actions -> integration_test -> Run workflow); best on a
-    # capable or self-hosted runner. Not auto-run on push, so a resource-starved
-    # free runner can't produce a misleading red check.
-    if: github.event_name == 'workflow_dispatch'
+    # Heavy: compiles PX4 from source (first run ~20-30 min, then GHA layer-cached
+    # so later runs skip the compile). AUTO-RUNS on push to the default branch AND
+    # on demand; skipped on pull_request (fork PRs can't reach the build cache and
+    # would false-red on a resource-starved runner). This is the spec's "CI builds
+    # in Docker, runs 60 s" check running automatically.
+    if: github.event_name != 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
