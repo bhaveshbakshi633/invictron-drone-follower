@@ -76,8 +76,11 @@ ros2 launch drone_system full_stack.launch.py
 
 ## What it does
 
-1. `car_sim` drives a box around a **figure-8** and publishes `/car/position`.
-2. `follower` trails the car by **5 m** at **20 m** altitude, emitting
+1. `car_sim` publishes a scripted **figure-8** trajectory on `/car/position` (the
+   follower's only car input). `car_viz` *optionally* spawns a matching box in the
+   Gazebo GUI — pure visualization; the follower never reads it.
+2. `follower` trails the car by **5 m** at **20 m** altitude with a velocity
+   feed-forward (`lead_time_s`) to offset the drone's tracking lag, emitting
    `/drone/waypoint` at **50 Hz**. This is the core node.
 3. `px4_interface` arms the drone (**retry 3×**), takes off to **20 m**, then
    streams **OFFBOARD** setpoints to PX4 to chase the waypoint.
