@@ -117,14 +117,14 @@ Nothing is hardcoded — edit, relaunch, done.
 | Gazebo RTF < 0.8 | `health_monitor` compares PX4 lockstep sim-time vs a wall clock | WARNING **every 5 s** until it recovers |
 
 A nominal 60 s run trips none of these (no gap, no jump, arm succeeds first try, RTF
-healthy) — so the recovery code is real and unit-tested but not *exercised* in a clean
-log. To watch each recovery happen against a live stack:
+healthy) — so the recovery code never *fires* in a clean log. Each path is reproducible
+on demand so you can watch the recovery happen against a live stack:
 
 ```bash
 scripts/demo_failures.sh car_gap   # kills /car/position   -> follower hovers + WARN
 scripts/demo_failures.sh jump      # injects a >5 m teleport -> discard + hold + WARN
-scripts/demo_failures.sh rtf       # how to force RTF < 0.8 (software render / CPU load)
-scripts/demo_failures.sh arm       # how to force an arm failure (block pre-flight)
+scripts/demo_failures.sh rtf       # pegs all CPUs -> RTF < 0.8 -> warning every 5 s
+scripts/demo_failures.sh arm       # (relaunch) force_arm_fail_n -> 3 arm retries -> clean shutdown
 # then: python3 tools/log_summary.py run_logs/events.log
 ```
 

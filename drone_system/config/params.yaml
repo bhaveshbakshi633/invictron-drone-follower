@@ -34,6 +34,7 @@ px4_interface:
     takeoff_altitude_m: 20.0
     arm_max_retries: 3       # arm attempts before clean shutdown
     arm_retry_delay_s: 2.0
+    force_arm_fail_n: 0      # fault injection for the failure demo: set >= arm_max_retries to force the arm-retry -> clean-shutdown path (0 = normal)
     offboard_rate_hz: 20.0   # PX4 needs >2 Hz setpoints to stay in OFFBOARD
     min_altitude_check_m: 1.0
 

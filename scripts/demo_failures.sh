@@ -32,18 +32,25 @@ case "${1:-}" in
     echo "        WARNING | follower | jump_rejected delta_m=... action=discard_hold_last_valid"
     ;;
   rtf)
-    echo "[demo] RTF < 0.8 fires when the sim can't keep real-time. To force it:"
-    echo "  * software rendering:   LIBGL_ALWAYS_SOFTWARE=1 before launching Gazebo, or"
-    echo "  * CPU load:             run 'stress -c \$(nproc)' in the container during the run"
-    echo "  Watch events.log every 5 s for:"
-    echo "        WARNING | health_monitor | rtf=0.xx below 0.8 ..."
+    secs="${2:-20}"
+    echo "[demo] pegging all ${secs}s CPUs to force RTF < 0.8 (health_monitor warns every 5 s)"
+    for _ in $(seq "$(nproc)"); do yes > /dev/null & done
+    sleep "$secs"
+    pkill -x yes 2>/dev/null || true
+    echo "[demo] load released -> RTF should recover. Watch events.log for:"
+    echo "        WARNING | health_monitor | rtf=0.xx below 0.8 ...  (every 5 s), then recovery"
     ;;
   arm)
-    echo "[demo] Arm-retry (3x then clean shutdown) is hard to force in clean SITL."
-    echo "  To exercise it: block arming so pre-flight checks never pass, e.g. set an"
-    echo "  impossible arm gate, or kill the PX4 EKF feed so arming_state never reaches"
-    echo "  ARMED. Watch events.log for 3x 'arm_attempt' then 'arm_failed action=shutdown'."
-    echo "  (Also covered directly by the unit-tested arm-retry state machine.)"
+    echo "[demo] Arming is a one-time startup event, so this is a RELAUNCH demo."
+    echo "  px4_interface's 'force_arm_fail_n' param withholds the arm command for the"
+    echo "  first N attempts, so PX4 never arms and the retry -> clean-shutdown fires."
+    echo "  Set it >= arm_max_retries (3) in config/params.yaml, then relaunch:"
+    echo ""
+    echo "     # config/params.yaml -> px4_interface: force_arm_fail_n: 5"
+    echo "     ros2 launch drone_system full_stack.launch.py"
+    echo ""
+    echo "  Watch events.log for 3x 'arm_attempt=.. FAULT_INJECTED=withhold_arm' then:"
+    echo "        ERROR | px4_interface | arm failed after 3 attempts, shutting down cleanly"
     ;;
   *)
     echo "usage: $0 {car_gap|jump|rtf|arm}"; exit 2 ;;

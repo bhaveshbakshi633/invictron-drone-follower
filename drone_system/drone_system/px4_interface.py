@@ -55,6 +55,7 @@ class Px4Interface(Node):
         self.declare_parameter("takeoff_altitude_m", 20.0)
         self.declare_parameter("arm_max_retries", 3)
         self.declare_parameter("arm_retry_delay_s", 2.0)
+        self.declare_parameter("force_arm_fail_n", 0)   # fault injection (demo): fail first N arm attempts
         self.declare_parameter("offboard_rate_hz", 20.0)
         self.declare_parameter("min_altitude_check_m", 1.0)
         self.declare_parameter("log_dir", "logs")
@@ -62,6 +63,7 @@ class Px4Interface(Node):
         self.takeoff_alt = float(self.get_parameter("takeoff_altitude_m").value)
         self.max_retries = int(self.get_parameter("arm_max_retries").value)
         self.retry_delay = float(self.get_parameter("arm_retry_delay_s").value)
+        self.force_arm_fail_n = int(self.get_parameter("force_arm_fail_n").value)
         rate = float(self.get_parameter("offboard_rate_hz").value)
         self.rate = rate
         self._warmup_limit = int(rate * 60)  # give PX4 ~60 s to become arm-ready
@@ -247,10 +249,18 @@ class Px4Interface(Node):
 
     def _attempt_arm(self):
         self.arm_attempts += 1
+        self._last_arm_action = self._now_s()
+        # Fault injection (failure demo): withhold the arm command for the first
+        # force_arm_fail_n attempts so PX4 never arms and the retry -> clean-shutdown
+        # path actually fires. Default 0 = off. See scripts/demo_failures.sh arm.
+        if self.arm_attempts <= self.force_arm_fail_n:
+            self.log.warning(
+                f"arm_attempt={self.arm_attempts}/{self.max_retries} "
+                f"FAULT_INJECTED=withhold_arm")
+            return
         # Set mode OFFBOARD (base_mode=1, custom_main_mode=6) then arm.
         self._send_cmd(CMD_DO_SET_MODE, p1=1.0, p2=6.0)
         self._send_cmd(CMD_ARM_DISARM, p1=1.0)
-        self._last_arm_action = self._now_s()
         self.log.info(f"arm_attempt={self.arm_attempts}/{self.max_retries}")
 
     def _clean_shutdown(self):
