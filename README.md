@@ -77,6 +77,13 @@ above instead.
 GUI=1 ./scripts/run.sh        # or: ./scripts/run_local.sh
 ```
 
+This opens Gazebo showing the **drone and a red car box** (the box follows
+`/car/position` — pure visualization; the follower still reads only the topic).
+
+**To stop it:** press **Ctrl-C in that terminal** — it force-removes the container,
+which kills every node + PX4 + Gazebo at once. From another terminal you can also
+run `./scripts/stop.sh` (the reliable off-switch).
+
 Inside the built image — or on a native ROS2 Humble + PX4 v1.15 + `px4_msgs`
 host (see [Native setup](#native-setup)) — the single launch command is:
 
@@ -85,8 +92,9 @@ ros2 launch drone_system full_stack.launch.py                          # headles
 ros2 launch drone_system full_stack.launch.py headless:=0 car_viz:=1   # GUI + visible car box
 ```
 
-`car_viz:=1` spawns a visible box in the Gazebo GUI that tracks the car's
-`/car/position` (pure visualization — the follower still reads only the topic).
+`car_viz:=1` spawns the visible car box. If you run `ros2 launch` **directly**, stop
+it with `./scripts/stop.sh` — a bare Ctrl-C can leave the stubborn PX4/gz processes
+running (a known PX4-SITL teardown quirk), and `stop.sh` cleans those up too.
 
 ---
 
@@ -180,17 +188,19 @@ python3 tools/ci_check.py --telemetry run_logs/telemetry.jsonl --events run_logs
 ## Continuous integration
 
 [`.github/workflows/integration_test.yml`](.github/workflows/integration_test.yml)
-builds the Docker image, runs the stack headless for 60 s, asserts the drone
-stayed above 1 m with no errors in the final 30 s (`ci_check.py`), and uploads
-all logs + plots as artifacts.
+builds the image **in Docker**, runs the stack headless for 60 s, asserts the drone
+stayed above 1 m with no errors in the final 30 s (`ci_check.py`), proves the
+arm-failure clean shutdown (`scripts/test_arm_failure.sh`: 4 attempts → ERROR →
+px4_interface exits), and uploads all logs + plots as artifacts.
 
-> The workflow runs two lanes: a fast **`tools`** job (every push/PR) that
-> unit-checks `log_summary.py`, `ci_check.py` (nominal passes, the failing sample
-> is rejected) and `plot_run.py` against the committed `sample_logs/`; and the
-> heavy **`sitl-integration`** job (run on demand via *Actions → Run workflow*)
-> that builds the image and runs the real 60 s flight. It compiles PX4 (slow,
-> layer-cached) and is best on a capable or self-hosted runner — it fails loudly
-> rather than falsely green if the drone never actually flies.
+> Two lanes: a fast **`tools`** job (every push/PR) that unit-checks
+> `log_summary.py`, `ci_check.py` (nominal passes, the failing sample is rejected)
+> and `plot_run.py` against the committed `sample_logs/`; and the
+> **`sitl-integration`** job that builds the image and flies the real 60 s stack +
+> the arm-failure test. It runs **on every push to `main` and on demand**. The
+> Docker build layer-caches the PX4 compile, so after the first run it finishes in a
+> few minutes on a free 2-core GitHub runner — it fails loudly rather than falsely
+> green if the drone never actually flies.
 
 ---
 
@@ -239,7 +249,8 @@ drone_system/            ROS2 ament_python package
   test/test_follow_policy.py
 tools/                   log_summary.py, plot_run.py, ci_check.py
 docker/                  Dockerfile, entrypoint.sh
-scripts/                 run.sh, build_image.sh, run_local.sh, run_ci.sh, demo_failures.sh
+scripts/                 run.sh, run_local.sh (GUI+car), stop.sh, build_image.sh,
+                         run_ci.sh, test_arm_failure.sh, demo_failures.sh
 sample_logs/             example nominal + failing runs
 .github/workflows/       integration_test.yml, publish_image.yml
 ANALYSIS.md              the four required design answers

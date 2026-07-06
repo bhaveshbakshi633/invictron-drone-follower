@@ -35,5 +35,8 @@ if [ "${GUI:-0}" = "1" ]; then
 fi
 
 echo "[run] 60-second headless integration test (no X server needed)…"
+echo "[run] (to abort early: Ctrl-C here, or './scripts/stop.sh' from another terminal)"
 mkdir -p "$REPO/run_logs"
-exec docker run --rm -v "$REPO/run_logs:/root/run/logs" "$IMAGE" bash /root/scripts/run_ci.sh
+# --name so ./scripts/stop.sh can force-remove it; the 60 s gate self-terminates.
+exec docker run --rm --name drone_ci -v "$REPO/run_logs:/root/run/logs" \
+    "$IMAGE" bash /root/scripts/run_ci.sh
