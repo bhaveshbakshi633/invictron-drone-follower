@@ -88,11 +88,13 @@ ros2 launch drone_system full_stack.launch.py headless:=0 car_viz:=1   # GUI + v
 1. `car_sim` publishes a scripted **figure-8** trajectory on `/car/position` (the
    follower's only car input). `car_viz` *optionally* spawns a matching box in the
    Gazebo GUI — pure visualization; the follower never reads it.
-2. `follower` trails the car by **5 m** at **20 m** altitude with a velocity
-   feed-forward (`lead_time_s`) to offset the drone's tracking lag, emitting
-   `/drone/waypoint` at **50 Hz**. This is the core node.
+2. `follower` places the waypoint **5 m** behind the car at **20 m** altitude,
+   emitting `/drone/waypoint` at **50 Hz** (with an optional `lead_time_s`
+   look-ahead, off by default). This is the core node.
 3. `px4_interface` arms the drone (**retry 3×**), takes off to **20 m**, then
-   streams **OFFBOARD** setpoints to PX4 to chase the waypoint.
+   streams **OFFBOARD** setpoints to PX4 — position **plus a velocity feed-forward**
+   (finite-diff of the waypoint stream) so the controller leads the moving target
+   instead of trailing it.
 4. `health_monitor` watches the Gazebo real-time factor.
 5. `telemetry_logger` records everything for the plots.
 
@@ -195,7 +197,7 @@ ros2 launch drone_system full_stack.launch.py params:=/path/to/my_params.yaml
 ```
 
 Launch arguments: `headless:=1|0`, `car_viz:=1` (visible car box in the GUI),
-`params:=<path>`, `px4_dir:=<path>`.
+`car_viz_world:=<gz world>` (default `default`), `params:=<path>`, `px4_dir:=<path>`.
 
 ---
 
@@ -223,15 +225,16 @@ those steps if you'd rather mirror it by hand.
 
 ```
 drone_system/            ROS2 ament_python package
-  drone_system/          car_sim, follower, px4_interface, health_monitor,
-                         telemetry_logger, logutil
+  drone_system/          car_sim, follower, follow_policy, px4_interface,
+                         health_monitor, telemetry_logger, car_viz, logutil
   launch/full_stack.launch.py
   config/params.yaml     every threshold
+  test/test_follow_policy.py
 tools/                   log_summary.py, plot_run.py, ci_check.py
 docker/                  Dockerfile, entrypoint.sh
-scripts/                 run.sh, build_image.sh, run_local.sh, run_ci.sh
+scripts/                 run.sh, build_image.sh, run_local.sh, run_ci.sh, demo_failures.sh
 sample_logs/             example nominal + failing runs
-.github/workflows/       integration_test.yml
+.github/workflows/       integration_test.yml, publish_image.yml
 ANALYSIS.md              the four required design answers
 ```
 

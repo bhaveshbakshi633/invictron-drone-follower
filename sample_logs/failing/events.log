@@ -1,6 +1,5 @@
 2026-07-04T15:10:00.300000+05:30 | INFO | px4_interface | armed=true attempt=1
-2026-07-04T15:10:01.000000+05:30 | INFO | px4_interface | takeoff commanded target_alt=20.0
-2026-07-04T15:10:12.000000+05:30 | INFO | follower | reached cruise altitude=20.0 begin tracking
-2026-07-04T15:10:30.000000+05:30 | WARNING | px4_interface | battery low 18% failsafe descend engaged
-2026-07-04T15:10:33.000000+05:30 | ERROR | px4_interface | altitude below safety floor 0.4m emergency
-2026-07-04T15:10:44.000000+05:30 | ERROR | px4_interface | arm failed after 3 attempts, shutting down
+2026-07-04T15:10:11.000000+05:30 | INFO | px4_interface | takeoff_complete altitude_m=19.5
+2026-07-04T15:10:28.000000+05:30 | WARNING | health_monitor | rtf=0.71 below min=0.8 sim_running_slow
+2026-07-04T15:10:33.000000+05:30 | WARNING | px4_interface | low_altitude alt_m=0.65 floor_m=1.0 action=warn
+2026-07-04T15:10:38.000000+05:30 | WARNING | px4_interface | low_altitude alt_m=0.30 floor_m=1.0 action=warn
