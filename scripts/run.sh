@@ -8,7 +8,10 @@
 #                             desktop with an X11 display).
 set -e
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-IMAGE="${IMAGE:-drone_system:latest}"
+# Prefer the pre-built image from GHCR (no PX4 compile). Override with IMAGE=<tag>,
+# or set IMAGE=drone_system:latest to force a local source build.
+PREBUILT="ghcr.io/bhaveshbakshi633/drone_system:latest"
+IMAGE="${IMAGE:-$PREBUILT}"
 
 if ! docker info >/dev/null 2>&1; then
     echo "[run] cannot talk to Docker. Install Docker Engine and either add your" >&2
@@ -16,10 +19,15 @@ if ! docker info >/dev/null 2>&1; then
     exit 1
 fi
 
-# Build the image on first run only.
+# Get the image: use it if already local, else PULL the pre-built one, else BUILD.
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-    echo "[run] image '$IMAGE' not found -- building (first build compiles PX4, ~20-30 min)…"
-    "$REPO/scripts/build_image.sh"
+    echo "[run] fetching pre-built image '$IMAGE' (no compile needed)…"
+    if ! docker pull "$IMAGE"; then
+        echo "[run] pre-built image unavailable -- building from source" \
+             "(first build compiles PX4, ~20-30 min)…"
+        IMAGE=drone_system:latest
+        docker image inspect "$IMAGE" >/dev/null 2>&1 || "$REPO/scripts/build_image.sh"
+    fi
 fi
 
 if [ "${GUI:-0}" = "1" ]; then

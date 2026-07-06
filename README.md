@@ -23,8 +23,10 @@ ros2 launch drone_system full_stack.launch.py
 - **Docker Engine** on a Linux host. Either add your user to the `docker` group
   (`sudo usermod -aG docker $USER && newgrp docker`) or run the scripts with
   `sudo`.
-- The **first build compiles PX4 from source**: allow ~20–30 min, a working
-  internet connection, ~10 GB free disk, and ≥8 GB RAM.
+- **First run pulls a pre-built image** from GHCR
+  (`ghcr.io/bhaveshbakshi633/drone_system`) — no compile, just a ~6 GB download.
+  If that pull is unavailable it falls back to **building from source** (compiles
+  PX4, ~20–30 min). Either way: internet, ~10 GB free disk, ≥8 GB RAM.
 - Nothing else is needed to *run* it — ROS2, PX4, and Gazebo all live in the
   image.
 - To run the host-side tools (`tools/plot_run.py`) *outside* the container you
@@ -37,9 +39,10 @@ ros2 launch drone_system full_stack.launch.py
 git clone <this-repo-url> invictron-drone-follower
 cd invictron-drone-follower
 
-# One command from a fresh clone: builds the image if needed (first time only),
-# then runs the 60-second headless integration test. Works on ANY Linux host
-# with Docker — no X server required — and prints a PASS/FAIL gate at the end.
+# One command from a fresh clone: pulls the pre-built image (no compile; falls
+# back to a source build only if the pull is unavailable), then runs the 60-second
+# headless integration test. Works on ANY Linux host with Docker — no X server
+# required — and prints a PASS/FAIL gate at the end.
 ./scripts/run.sh
 ```
 
