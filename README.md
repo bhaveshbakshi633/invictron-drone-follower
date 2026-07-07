@@ -1,8 +1,9 @@
 # drone_system — a PX4/Gazebo drone that follows a car (ROS2)
 
 A ROS2 system where a simulated **PX4 SITL drone** takes off and **follows a
-simulated car** at a fixed trailing offset. Built for the Invictron Robotics
-System Engineer assessment.
+simulated car** at a fixed trailing offset — built end-to-end as a robotics
+systems exercise: simulation, control, failure handling, logging, CI, and
+reproducible delivery.
 
 Everything — the PX4↔ROS2 bridge, PX4 SITL, Gazebo, and all five ROS2 nodes —
 comes up from **one command**.
@@ -43,8 +44,8 @@ ros2 launch drone_system full_stack.launch.py
 ## Quick start
 
 ```bash
-git clone <this-repo-url> invictron-drone-follower
-cd invictron-drone-follower
+git clone https://github.com/bhaveshbakshi633/px4-drone-follow-system.git
+cd px4-drone-follow-system
 
 # One command from a fresh clone: pulls the pre-built image (no compile; falls
 # back to a source build only if the pull is unavailable), then runs the 60-second
