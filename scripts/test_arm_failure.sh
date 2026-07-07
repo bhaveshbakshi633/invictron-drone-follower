@@ -33,6 +33,7 @@ LPID=$!
 
 cleanup() {  # tear the rest down the way run_ci.sh / docker --rm would
     kill -INT "$LPID" 2>/dev/null; sleep 3; kill -9 "$LPID" 2>/dev/null
+    wait "$LPID" 2>/dev/null || true
     pkill -f px4 2>/dev/null; pkill -f 'gz sim' 2>/dev/null
     pkill -f MicroXRCEAgent 2>/dev/null; pkill -f drone_system 2>/dev/null; true
 }

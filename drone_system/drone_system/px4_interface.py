@@ -61,6 +61,19 @@ class Px4Interface(Node):
         self.declare_parameter("min_altitude_check_m", 1.0)
         self.declare_parameter("takeoff_reach_tolerance_m", 0.5)
         self.declare_parameter("low_alt_warn_period_s", 5.0)
+        # Wall-clock budget for PX4 to pass pre-arm checks before we give up. Must be
+        # generous: with the Gazebo GUI attached the real-time factor can fall to ~0.2,
+        # so a fixed 60 s only buys ~12 s of sim time -- not enough for the EKF/GPS to
+        # converge. Headless runs become ready in ~10 s and never approach this.
+        self.declare_parameter("arm_ready_timeout_s", 180.0)
+        # Gain (0..1) on the waypoint-velocity feed-forward. Measured on the default
+        # figure-8 at 2.5 m/s: 1.0 gives the best offset tracking (median sep 4.9 m
+        # vs the 5.0 m target) with ~2.4-2.8 m envelope overshoot on the lobes;
+        # 0.7 shrinks the envelope by only ~0.5 m but degrades the offset to ~6.2 m.
+        # 1.0 is therefore the default -- offset distance is the primary behavior.
+        # The remaining cornering overshoot is the documented ANALYSIS Q3 limitation
+        # (accel-limited controller chasing a curving target without an estimator).
+        self.declare_parameter("vel_ff_gain", 1.0)
         self.declare_parameter("log_dir", "logs")
 
         self.takeoff_alt = float(self.get_parameter("takeoff_altitude_m").value)
@@ -75,7 +88,8 @@ class Px4Interface(Node):
         self.low_alt_warn_period = float(self.get_parameter("low_alt_warn_period_s").value)
         rate = float(self.get_parameter("offboard_rate_hz").value)
         self.rate = rate
-        self._warmup_limit = int(rate * 60)  # give PX4 ~60 s to become arm-ready
+        self._warmup_limit = int(rate * float(self.get_parameter("arm_ready_timeout_s").value))
+        self.vel_ff_gain = float(self.get_parameter("vel_ff_gain").value)
         log_dir = self.get_parameter("log_dir").value
         self.log = get_event_logger("px4_interface", log_dir)
 
@@ -176,8 +190,11 @@ class Px4Interface(Node):
         # position controller LEADS the moving target instead of trailing it --
         # fixing the lag at the source (position-only setpoints) rather than
         # compensating it upstream. Zero during the straight-up climb.
-        sp.velocity = [float(self.target_vel[0]), float(self.target_vel[1]),
-                       float(self.target_vel[2])]
+        # Scaled by vel_ff_gain: full FF makes the accel-limited drone carry the
+        # corner speed wide of the car's track (envelope overshoot on the lobes).
+        g = self.vel_ff_gain
+        sp.velocity = [float(g * self.target_vel[0]), float(g * self.target_vel[1]),
+                       float(g * self.target_vel[2])]
         sp.acceleration = [nan, nan, nan]
         sp.jerk = [nan, nan, nan]
         sp.yaw = float(self.target_yaw)

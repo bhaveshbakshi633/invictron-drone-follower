@@ -53,6 +53,27 @@ cd invictron-drone-follower
 ./scripts/run.sh
 ```
 
+### The assignment's single command, verbatim
+
+`ros2 launch drone_system full_stack.launch.py` is the one command that starts
+everything — it just runs *inside* the pinned container (that's what makes it work
+on any machine). Two equivalent ways:
+
+```bash
+# a) one line from the host — the container runs the launch directly:
+docker run --rm -it -v "$(pwd)/run_logs:/root/run/logs" -w /root/run \
+    ghcr.io/bhaveshbakshi633/drone_system:latest \
+    ros2 launch drone_system full_stack.launch.py
+
+# b) or open a shell inside the stack container, then type the command yourself:
+./scripts/shell.sh
+#   root@…:/root/run#  ros2 launch drone_system full_stack.launch.py
+```
+
+Everything (uXRCE agent, PX4 SITL, Gazebo, all five nodes) starts from that one
+launch; logs land in `./run_logs` on the host. Stop with Ctrl-C / exiting the
+shell (the `--rm` container reaps PX4/gz), or `./scripts/stop.sh` from outside.
+
 That is the portable "proof it runs". Under the hood it just gets the image and
 runs the gate — the two steps you can also run by hand:
 
@@ -77,8 +98,17 @@ above instead.
 GUI=1 ./scripts/run.sh        # or: ./scripts/run_local.sh
 ```
 
-This opens Gazebo showing the **drone and a red car box** (the box follows
-`/car/position` — pure visualization; the follower still reads only the topic).
+This opens Gazebo showing the **drone and a red car box** that faces its direction
+of travel (the box follows `/car/position` — pure visualization; the follower
+still reads only the topic).
+
+**Rendering & GUI performance:** if the NVIDIA container toolkit is installed,
+`run_local.sh` auto-detects it and renders the GUI **on the GPU** (smooth, and the
+CPU stays free for physics). Without it, the GUI falls back to software rendering —
+expect low fps, a simulation real-time factor as low as ~0.2, and a correspondingly
+**slow arm/takeoff** (up to `arm_ready_timeout_s`, default 180 s — the EKF needs sim
+time, not wall time). The headless paths are unaffected (RTF ≈ 1.0). Force with
+`GPU=1` / `GPU=0`.
 
 **To stop it:** press **Ctrl-C in that terminal** — it force-removes the container,
 which kills every node + PX4 + Gazebo at once. From another terminal you can also
@@ -106,6 +136,13 @@ running (a known PX4-SITL teardown quirk), and `stop.sh` cleans those up too.
 2. `follower` places the waypoint **5 m** behind the car at **20 m** altitude,
    emitting `/drone/waypoint` at **50 Hz** (with an optional `lead_time_s`
    look-ahead, off by default). This is the core node.
+   *Measured tracking (figure-8 @ 2.5 m/s, headless):* separation **median 4.9 m /
+   max 5.9 m** against the 5.0 m target. Known behavior: on the tight lobes the
+   accel-limited drone swings **~2.5 m wide** of the car's track (path-envelope
+   overshoot). We swept the velocity-feed-forward gain (`vel_ff_gain` 1.0/0.85/0.7):
+   lowering it shrinks the envelope by only ~0.5 m while degrading the offset to
+   ~6.2 m, so the default stays 1.0 — offset distance is the primary spec behavior.
+   The real fix is a tracking estimator (see ANALYSIS Q4).
 3. `px4_interface` arms the drone (**retry 3×**), takes off to **20 m**, then
    streams **OFFBOARD** setpoints to PX4 — position **plus a velocity feed-forward**
    (finite-diff of the waypoint stream) so the controller leads the moving target
@@ -249,8 +286,9 @@ drone_system/            ROS2 ament_python package
   test/test_follow_policy.py
 tools/                   log_summary.py, plot_run.py, ci_check.py
 docker/                  Dockerfile, entrypoint.sh
-scripts/                 run.sh, run_local.sh (GUI+car), stop.sh, build_image.sh,
-                         run_ci.sh, test_arm_failure.sh, demo_failures.sh
+scripts/                 run.sh, run_local.sh (GUI+car), shell.sh (container shell),
+                         stop.sh, build_image.sh, run_ci.sh, test_arm_failure.sh,
+                         demo_failures.sh
 sample_logs/             example nominal + failing runs
 .github/workflows/       integration_test.yml, publish_image.yml
 ANALYSIS.md              the four required design answers

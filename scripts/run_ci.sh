@@ -36,6 +36,7 @@ sleep 1
 kill -INT "$LAUNCH_PID" 2>/dev/null || true
 sleep 6
 kill -KILL "$LAUNCH_PID" 2>/dev/null || true
+wait "$LAUNCH_PID" 2>/dev/null || true
 pkill -f px4 2>/dev/null || true
 pkill -f MicroXRCEAgent 2>/dev/null || true
 

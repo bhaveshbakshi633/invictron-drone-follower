@@ -42,6 +42,8 @@ px4_interface:
     min_altitude_check_m: 1.0        # in-flight low-altitude safety floor (also the CI gate)
     takeoff_reach_tolerance_m: 0.5   # altitude band within takeoff_altitude_m that counts as "reached"
     low_alt_warn_period_s: 5.0       # min seconds between repeated low-altitude warnings
+    arm_ready_timeout_s: 180.0       # wall-clock budget for PX4 pre-arm checks (generous: the GUI can drop RTF to ~0.2)
+    vel_ff_gain: 1.0                 # 0..1 FF gain; 1.0 = best offset tracking (measured); lower shrinks lobe overshoot slightly but degrades the 5 m offset
 
 health_monitor:
   ros__parameters:

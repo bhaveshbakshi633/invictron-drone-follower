@@ -57,13 +57,20 @@ def generate_launch_description():
         cmd=["MicroXRCEAgent", "udp4", "-p", "8888", "-v", "2"],  # -v 2: below default (4), keeps agent logs quiet
         output="screen", name="uxrce_agent")
 
-    # 2) PX4 SITL + Gazebo. `make px4_sitl gz_x500` boots the gz SERVER only (it
-    #    runs `gz sim -s`); it does NOT open a GUI window regardless of HEADLESS.
-    #    The GUI client is attached separately below when headless:=0.
+    # 2) PX4 SITL + Gazebo. ALWAYS boot the gz SERVER headless (HEADLESS=1). If PX4
+    #    is told HEADLESS=0 it tries to bring up the gz GUI *itself*, which fails to
+    #    get a render context in a container / on a headless host -- and then the gz
+    #    server never feeds sensor data, so PX4's pre-arm checks never pass and the
+    #    drone never arms. The GUI, when requested (headless:=0), is attached
+    #    separately below as a `gz sim -g` client that connects to this server.
     px4 = ExecuteProcess(
         cmd=["bash", "-c",
-             'cd "$PX4_DIR" && HEADLESS="$HEADLESS" make px4_sitl gz_x500 < /dev/null'],
-        additional_env={"PX4_DIR": px4_dir, "HEADLESS": headless},
+             'cd "$PX4_DIR" && HEADLESS=1 make px4_sitl gz_x500 < /dev/null'],
+        # Spawn the drone JUST ABOVE the ground (z=0.2 m). PX4's gz bridge nudges a
+        # model spawned at z<=0 sharply "upwards" (it ends up resting ~1.7 m in the
+        # air); spawning at a small positive z avoids that nudge, so the drone sits on
+        # the ground and takes off from there.
+        additional_env={"PX4_DIR": px4_dir, "PX4_GZ_MODEL_POSE": "0,0,0.2"},
         output="screen", name="px4_sitl")
 
     # 3) our nodes -- staggered so PX4/agent are up first

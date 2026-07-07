@@ -46,12 +46,29 @@ stop() { [ "$_stopped" = 1 ] && return 0; _stopped=1
 trap 'stop; exit 0' INT TERM
 trap stop EXIT
 
+# GPU rendering for the gz GUI: on a box with the NVIDIA container toolkit this uses
+# the GPU (smooth fps AND leaves the CPU for physics, so PX4 arms). Without it, falls
+# back to software rendering -- much slower; the sim RTF can drop to ~0.2, so the drone
+# can take up to ~arm_ready_timeout_s to arm. Force with GPU=1 / GPU=0.
+# NOTE: we deliberately do NOT use --net=host -- it routes PX4<->agent<->nodes DDS over
+# the host interface, where discovery can silently fail and PX4 never becomes ready.
+GPU="${GPU:-auto}"
+if [ "$GPU" = "auto" ]; then
+    if docker run --rm --gpus all "$IMAGE" true >/dev/null 2>&1; then GPU=1; else GPU=0; fi
+fi
+if [ "$GPU" = "1" ]; then
+    RENDER=(--gpus all -e NVIDIA_VISIBLE_DEVICES=all -e NVIDIA_DRIVER_CAPABILITIES=all)
+    echo "[run_local] GPU rendering (NVIDIA container toolkit detected)."
+else
+    RENDER=(-e LIBGL_ALWAYS_SOFTWARE=1)
+    echo "[run_local] SOFTWARE rendering (no GPU toolkit) -- GUI will be slow; drone may take ~1 min to arm."
+fi
+
 echo "[run_local] starting GUI demo (headless=$HEADLESS car_viz=$CAR_VIZ, container '$NAME')."
 echo "[run_local] >>> press Ctrl-C in THIS terminal to stop everything <<<"
 docker run --rm -t --name "$NAME" \
-    --net=host \
+    "${RENDER[@]}" \
     -e DISPLAY="${DISPLAY:-:0}" \
-    -e LIBGL_ALWAYS_SOFTWARE=1 \
     -e QT_X11_NO_MITSHM=1 \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
     -v "$REPO/run_logs:/root/run/logs" \
