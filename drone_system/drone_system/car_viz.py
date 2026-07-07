@@ -43,7 +43,7 @@ class CarViz(Node):
         super().__init__("car_viz")
         self.declare_parameter("world", "default")
         self.declare_parameter("model_name", "car_box")
-        self.declare_parameter("update_rate_hz", 10.0)
+        self.declare_parameter("update_rate_hz", 5.0)
         self.declare_parameter("box_size_m", [2.0, 1.0, 0.6])
         self.declare_parameter("gz_bin", "gz")
 
@@ -110,7 +110,10 @@ class CarViz(Node):
                f'orientation: {{z: {qz:.5f} w: {qw:.5f}}}')
         cmd = [self.gz, "service", "-s", f"/world/{self.world}/set_pose",
                "--reqtype", "gz.msgs.Pose", "--reptype", "gz.msgs.Boolean",
-               "--timeout", "200", "--req", req]
+               # generous timeout: if the CLI exits before the (busy) server replies,
+               # the server spams "RecvSrvRequest() error sending response: Host
+               # unreachable" for every call -- seen at low RTF with the GUI attached
+               "--timeout", "2000", "--req", req]
         try:
             p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self._inflight.append(p)   # reaped in _tick via poll()

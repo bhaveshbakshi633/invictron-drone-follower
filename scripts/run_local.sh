@@ -32,6 +32,9 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
 fi
 
 mkdir -p "$REPO/run_logs"
+# Fresh logs per demo session -- otherwise events.log accumulates across runs and
+# old failure-drill lines show up in a new session's log (confusing to read).
+rm -f "$REPO/run_logs/events.log" "$REPO/run_logs/telemetry.jsonl" "$REPO/run_logs/launch.log"
 xhost +local:root >/dev/null 2>&1 || true
 
 # --- clean shutdown ---------------------------------------------------------
