@@ -4,12 +4,12 @@
 Usage:
     python3 tools/ci_check.py [--telemetry logs/telemetry.jsonl]
                               [--events logs/events.log]
-                              [--min-alt 1.0] [--window 30]
+                              [--min-alt 1.0] [--airborne-alt 2.0] [--window 30]
 
 Gate rules:
   1. Altitude floor. FAIL if, during the airborne phase, drone altitude ever
      drops below ``--min-alt`` (default 1.0 m). The airborne phase begins at
-     the first telemetry row whose altitude exceeds min-alt (the pre-takeoff
+     the first sustained climb above ``--airborne-alt`` (default 2.0 m; the pre-takeoff
      climb is ignored), and includes every row after it.
   2. Late errors. FAIL if there is ANY ERROR-level line in events.log within
      the final ``--window`` seconds (default 30) of the run. The run's end is
@@ -74,18 +74,33 @@ def load_events(path):
     return events
 
 
-def check_altitude_floor(rows, min_alt):
-    """Return (ok, detail_dict) for the altitude-floor rule."""
-    # Find takeoff index: first row where drone_z first exceeds min_alt.
+def check_altitude_floor(rows, min_alt, airborne_alt=2.0, airborne_consec=3):
+    """Return (ok, detail_dict) for the altitude-floor rule.
+
+    Airborne detection is deliberately STRICTER than the floor itself: the phase
+    latches at the first run of ``airborne_consec`` consecutive samples above
+    ``airborne_alt`` (default 2 m), i.e. an unambiguous climb. Latching at the
+    first sample above the 1 m floor is flaky: while the drone is still PARKED,
+    the EKF's converging altitude estimate can blip past 1 m for a few samples
+    (observed: parked reads settling at ~0.9 m after an initial 1.01 m blip),
+    which would latch "airborne" on the ground and count the parked drone as a
+    violation. The floor check itself (``min_alt``) is unchanged from the latch
+    point onward.
+    """
     airborne_start = None
+    streak = 0
     for i, row in enumerate(rows):
         z = row.get("drone_z")
-        if z is not None and z > min_alt:
-            airborne_start = i
+        if z is None:
+            continue
+        streak = streak + 1 if z > airborne_alt else 0
+        if streak >= airborne_consec:
+            airborne_start = i - (airborne_consec - 1)
             break
 
     detail = {
         "min_alt": min_alt,
+        "airborne_alt": airborne_alt,
         "airborne_start_index": airborne_start,
         "airborne_start_t": None,
         "min_airborne_alt": None,
@@ -95,9 +110,10 @@ def check_altitude_floor(rows, min_alt):
 
     if airborne_start is None:
         # Never took off -> the run never demonstrated flight. The spec gate is
-        # "drone stayed above 1 m", so a run that never climbed above min-alt (or
-        # produced no telemetry at all) is a FAIL, not a vacuous pass.
-        detail["note"] = "drone never climbed above min-alt; no airborne phase -> FAIL"
+        # "drone stayed above 1 m", so a run that never climbed to a clear
+        # airborne altitude (or produced no telemetry) is a FAIL, not a vacuous pass.
+        detail["note"] = ("drone never climbed above the airborne threshold; "
+                          "no airborne phase -> FAIL")
         return False, detail
 
     detail["airborne_start_t"] = rows[airborne_start].get("t")
@@ -185,6 +201,8 @@ def main(argv):
     parser.add_argument("--telemetry", default="logs/telemetry.jsonl")
     parser.add_argument("--events", default="logs/events.log")
     parser.add_argument("--min-alt", type=float, default=1.0)
+    parser.add_argument("--airborne-alt", type=float, default=2.0,
+                        help="altitude that latches the airborne phase (3 consecutive samples)")
     parser.add_argument("--window", type=float, default=30.0)
     args = parser.parse_args(argv[1:])
 
@@ -203,7 +221,8 @@ def main(argv):
     print("-" * 62)
 
     # Rule 1: altitude floor.
-    alt_ok, alt = check_altitude_floor(rows, args.min_alt)
+    alt_ok, alt = check_altitude_floor(rows, args.min_alt,
+                                       airborne_alt=args.airborne_alt)
     print("[Rule 1] Altitude floor during airborne phase")
     if alt["airborne_start_index"] is None:
         print("         {}".format(alt.get("note", "no airborne phase")))
